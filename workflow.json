@@ -1,0 +1,208 @@
+{
+  "name": "Smart Webhook Router",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "path": "smart-router",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "route-by-priority",
+      "name": "Route by Priority",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [650, 250],
+      "parameters": {
+        "rules": {
+          "rules": [
+            {"value": "high", "outputKey": "High Priority"},
+            {"value": "medium", "outputKey": "Medium Priority"},
+            {"value": "low", "outputKey": "Low Priority"}
+          ]
+        },
+        "options": {},
+        "mode": "rules",
+        "dataType": "string",
+        "value": "={{ $json.priority || 'low' }}"
+      }
+    },
+    {
+      "id": "process-high",
+      "name": "Process High Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 100],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {"id": "assign-1", "name": "status", "value": "processed", "type": "string"},
+            {"id": "assign-2", "name": "priority_level", "value": "HIGH", "type": "string"},
+            {"id": "assign-3", "name": "event", "value": "={{ $json.event }}", "type": "string"},
+            {"id": "assign-4", "name": "processed_at", "value": "={{ $now.toISO() }}", "type": "string"},
+            {"id": "assign-5", "name": "action", "value": "immediate_notification", "type": "string"}
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "process-medium",
+      "name": "Process Medium Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 250],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {"id": "assign-1", "name": "status", "value": "processed", "type": "string"},
+            {"id": "assign-2", "name": "priority_level", "value": "MEDIUM", "type": "string"},
+            {"id": "assign-3", "name": "event", "value": "={{ $json.event }}", "type": "string"},
+            {"id": "assign-4", "name": "processed_at", "value": "={{ $now.toISO() }}", "type": "string"},
+            {"id": "assign-5", "name": "action", "value": "queue_for_review", "type": "string"}
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "process-low",
+      "name": "Process Low Priority",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 400],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {"id": "assign-1", "name": "status", "value": "processed", "type": "string"},
+            {"id": "assign-2", "name": "priority_level", "value": "LOW", "type": "string"},
+            {"id": "assign-3", "name": "event", "value": "={{ $json.event }}", "type": "string"},
+            {"id": "assign-4", "name": "processed_at", "value": "={{ $now.toISO() }}", "type": "string"},
+            {"id": "assign-5", "name": "action", "value": "log_only", "type": "string"}
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1150, 250],
+      "parameters": {
+        "mode": "chooseBranch",
+        "chooseBranch": {"output": "empty"}
+      }
+    },
+    {
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 250],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, data: $json, message: 'Event processed successfully' }) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [{"name": "Content-Type", "value": "application/json"}]
+          }
+        }
+      }
+    },
+    {
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 450],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: 'Invalid request: missing required field \"event\"' }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [{"name": "Content-Type", "value": "application/json"}]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{"node": "Validate Input", "type": "main", "index": 0}]]
+    },
+    "Validate Input": {
+      "main": [
+        [{"node": "Route by Priority", "type": "main", "index": 0}],
+        [{"node": "Error Response", "type": "main", "index": 0}]
+      ]
+    },
+    "Route by Priority": {
+      "main": [
+        [{"node": "Process High Priority", "type": "main", "index": 0}],
+        [{"node": "Process Medium Priority", "type": "main", "index": 0}],
+        [{"node": "Process Low Priority", "type": "main", "index": 0}]
+      ]
+    },
+    "Process High Priority": {
+      "main": [[{"node": "Merge Results", "type": "main", "index": 0}]]
+    },
+    "Process Medium Priority": {
+      "main": [[{"node": "Merge Results", "type": "main", "index": 1}]]
+    },
+    "Process Low Priority": {
+      "main": [[{"node": "Merge Results", "type": "main", "index": 2}]]
+    },
+    "Merge Results": {
+      "main": [[{"node": "Success Response", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
